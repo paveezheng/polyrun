@@ -1,48 +1,22 @@
 # polyrun
 
-A small Go utility for running and managing processes (lightweight runner).
-
-## Features
-
-- Minimal CLI for executing commands and simple process orchestration
-- Designed to be used as a library or standalone tool
-
-## Installation
-
-Install the latest released version:
+Watches source files and restarts the program when they change.
 
 ```bash
-go install github.com/Yanzzp999/polyrun@latest
+go install github.com/paveezheng/polyrun@latest
 ```
-
-Or add as a dependency in your module:
 
 ```bash
-go get github.com/Yanzzp999/polyrun@latest
+polyrun ./cmd/your-tool
 ```
 
-## Usage
+By default this runs `go run` with the arguments you pass, and restarts it when a `.go` file under the current directory changes. Ctrl-C stops polyrun.
 
-If the repository provides a `main` executable, after `go install` the binary will be available in `$GOBIN` or `$GOPATH/bin`.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `GORUN_LANG` | `go` | `go`, `python`, or `python3` |
+| `GORUN_SCAN_DIR` | `.` | Directory to watch |
+| `GORUN_SKIP_DIRS` | `.git`, `.venv` | Extra paths to skip, separated by `:` |
+| `GORUN_ALL_FILES` | unset | Set to `1` to watch every non-hidden file |
 
-Example (run from another module):
-
-```go
-import "github.com/Yanzzp999/polyrun"
-
-// use polyrun package API here
-```
-
-For CLI usage, refer to the code examples in the repository.
-
-## Contributing
-
-Contributions are welcome. Please open issues or pull requests on GitHub.
-
-## License
-
-This project is licensed under the MIT License - see the `LICENSE` file for details.
-
-## Contact
-
-Author: Yanzzp999 (see GitHub profile)
+GPL-3.0. See [LICENSE](LICENSE).

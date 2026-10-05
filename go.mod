@@ -1,4 +1,4 @@
-module github.com/Yanzzp999/polyrun
+module github.com/paveezheng/polyrun
 
 go 1.25.0
 
