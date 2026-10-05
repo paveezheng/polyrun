@@ -70,15 +70,18 @@ func (o *goOption) ext() string {
 var startTime = time.Now()
 
 type processHandle struct {
-	cmd  *exec.Cmd
-	ptmx *os.File
-	done chan error
+	cmd           *exec.Cmd
+	ptmx          *os.File
+	done          chan error
+	started       time.Time
+	stopRequested bool
 }
 
 type runner struct {
 	opt    langOption
 	args   []string
 	bridge *terminalBridge
+	exited chan struct{}
 
 	mu      sync.Mutex
 	current *processHandle
@@ -140,6 +143,7 @@ func main() {
 		opt:    opt,
 		args:   os.Args[1:],
 		bridge: bridge,
+		exited: make(chan struct{}, 1),
 	}
 	if err := r.start(); err != nil {
 		fmt.Fprintln(os.Stderr, "Run process failed", err)
@@ -152,6 +156,10 @@ func main() {
 			drainEvents(events)
 			fmt.Println("rebuilding...")
 			if err := r.restart(); err != nil {
+				fmt.Println("Run process failed", err)
+			}
+		case <-r.exited:
+			if err := r.start(); err != nil {
 				fmt.Println("Run process failed", err)
 			}
 		case <-sigc:
@@ -298,8 +306,9 @@ func (r *runner) start() error {
 	cmd.Env = os.Environ()
 
 	proc := &processHandle{
-		cmd:  cmd,
-		done: make(chan error, 1),
+		cmd:     cmd,
+		done:    make(chan error, 1),
+		started: time.Now(),
 	}
 
 	var err error
@@ -340,15 +349,26 @@ func (r *runner) wait(proc *processHandle) {
 	proc.done <- err
 	close(proc.done)
 
-	if err != nil && !isExpectedStop(err) {
-		fmt.Println("Run process failed", err)
-	}
-
 	r.mu.Lock()
+	stopped := proc.stopRequested
 	if r.current == proc {
 		r.current = nil
 	}
 	r.mu.Unlock()
+
+	if stopped {
+		return
+	}
+	if err != nil && !isCleanExit(err) {
+		fmt.Println("Run process failed", err)
+		if time.Since(proc.started) < 500*time.Millisecond {
+			return
+		}
+	}
+	select {
+	case r.exited <- struct{}{}:
+	default:
+	}
 }
 
 func (r *runner) restart() error {
@@ -360,6 +380,9 @@ func (r *runner) stop(timeout time.Duration, verbose bool) {
 	r.mu.Lock()
 	proc := r.current
 	r.current = nil
+	if proc != nil {
+		proc.stopRequested = true
+	}
 	r.mu.Unlock()
 
 	if proc == nil || proc.cmd.Process == nil {
@@ -385,23 +408,13 @@ func (r *runner) stop(timeout time.Duration, verbose bool) {
 	}
 }
 
-func isExpectedStop(err error) bool {
-	if err == nil {
-		return true
-	}
-
+func isCleanExit(err error) bool {
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
-		return strings.Contains(err.Error(), ": killed")
+		return false
 	}
-
 	status, ok := exitErr.Sys().(syscall.WaitStatus)
-	if !ok {
-		return strings.Contains(err.Error(), ": killed")
-	}
-
-	sig := status.Signal()
-	return sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGKILL || sig == syscall.SIGQUIT
+	return ok && status.ExitStatus() == 130
 }
 
 func scanChanges(watchPath string, opt langOption, callback func()) {
